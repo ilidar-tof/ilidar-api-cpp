@@ -8,6 +8,13 @@ The following example project illustrate how to use our sensor functionalities a
 |OpenCV Example|[OpenCV]|Illustrate how to read the depth and intensity data and convert it to the image format|2D depth image|
 |PCL Example|[PCL]|Illustrate how to transform the depth images to the point cloud|3D point cloud|
 
+## Tested Environments and Library Versions
+|      OS      |     Build Tool     | OpenCV |   PCL  |
+|:------------:|:------------------:|:------:|:------:|
+|  Windows 10  | Visual Studio 2019 |  4.6.0 | 1.14.0 |
+|  Windows 10  |        CMake       |  4.6.0 | 1.14.0 |
+| Ubuntu 20.04 |        CMake       |  4.2.0 | 1.10.0 |
+
 # Build
 Please check the belows to build the projects in your development environment.
 
