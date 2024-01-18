@@ -1,28 +1,29 @@
 # iLidar API Example Projects
 The following example project illustrate how to use our sensor functionalities and help you integrate them into your application.
 
-# Project List
+## Project List
 |Project|Library|Description|Usage|
 |:---:|:---:|:---|:---|
 |Helloworld|C++|Illustrate how to use our sensor functionalities by using iLidar APIs|Sensor test|
 |OpenCV Example|[OpenCV]|Illustrate how to read the depth and intensity data and convert it to the image format|2D depth image|
 |PCL Example|[PCL]|Illustrate how to transform the depth images to the point cloud|3D point cloud|
 
-## Tested Environments and Library Versions
+## Development Environment
+This repository has been built and tested with real sensors in the following environment:
 |      OS      |     Build Tool     | OpenCV |   PCL  |
 |:------------:|:------------------:|:------:|:------:|
 |  Windows 10  | Visual Studio 2019 |  4.6.0 | 1.14.0 |
 |  Windows 10  |        CMake       |  4.6.0 | 1.14.0 |
 | Ubuntu 20.04 |        CMake       |  4.2.0 | 1.10.0 |
 
-# Build
+## How to Build
 Please check the belows to build the projects in your development environment.
 
-## Case 1: Visual Studio (Windows 10)
+### Case 1: Visual Studio (Windows 10)
 1. Open the `ilidar-api-cpp.sln` file with Visual Studio.
 2. Build the proejcts. OpenCV and PCL examples may require additional solution settings depending on your development environment.
 
-## Case 2: CMake (Windows / Linux)
+### Case 2: CMake (Windows / Linux)
 1. Open and change `CMakeList.txt` file to your development environment.
 2. Use the following CMake command to build the projects:
     ```bash
@@ -31,7 +32,7 @@ Please check the belows to build the projects in your development environment.
     ```
 3. See executables in output folder. You may need to copy DLL files or "iTFS-110.dat" files to the output folder.
 
-# Implementation
+## Implementation
 All example projects have the same structure and users can implement it with the following code block:
 ```cpp
 // Include ilidar library
@@ -95,7 +96,7 @@ int main(int argc, char* argv[]) {
 }
 ```
 
-# License
+## License
 All example projects are licensed under the MIT License. Copyright 2022-Present HYBO Inc.  
 See LICENSE file to check the licenses of all open source libraries used in each project.
 
