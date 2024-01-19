@@ -5,7 +5,7 @@ The following example projects illustrate how to use our sensor functionalities 
 |Project|Library|Description|Usage|
 |:---:|:---:|:---|:---|
 |Helloworld|C++|Illustrates how to use our sensor functionalities by using iLidar APIs|Sensor test|
-|OpenCV Example|[OpenCV]|Illustrates how to read the depth and intensity data and convert them to the image format|2D depth image|
+|OpenCV Example|[OpenCV]|Illustrates how to read the depth and intensity data and convert them to the image format|2D depth and intensity images|
 |PCL Example|[PCL]|Illustrates how to transform the depth images to the point cloud|3D point cloud|
 
 ## Development Environment
@@ -24,7 +24,7 @@ Please check the belows to build the projects in your development environment.
 2. Build the proejcts. OpenCV and PCL examples may require additional solution settings depending on your development environment.
 
 ### Case 2: CMake (Windows / Linux)
-1. Open and change `CMakeList.txt` file to your development environment.
+1. Open `CMakeList.txt` file and modify it to suit your development environment.
 2. Use the following CMake command to build the projects:
     ```bash
     cmake .
