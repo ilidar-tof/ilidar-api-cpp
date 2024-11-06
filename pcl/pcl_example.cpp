@@ -50,8 +50,8 @@ void transform(pcl::PointCloud<pcl::PointXYZRGBA>::Ptr dst, iTFS::img_t* lidar_d
 
 			// Transform image coordinates to Cartesian
 			int idx = _j * iTFS::max_col + _i;
-			dst.get()->points[idx].x = depth * depthVector.x;
-			dst.get()->points[idx].y = depth * depthVector.z;
+			dst.get()->points[idx].x = depth * depthVector.z;
+			dst.get()->points[idx].y = -depth * depthVector.x;
 			dst.get()->points[idx].z = -depth * depthVector.y;
 
 			// Color
@@ -136,54 +136,126 @@ static void status_packet_handler(iTFS::device_t* device) {
 
 // Basic lidar info packet handler function
 static void info_packet_handler(iTFS::device_t* device) {
-	// Print message
-	printf("[MESSAGE] iTFS::LiDAR info   | D# %d  lock %d\n",
-		device->idx, device->info.lock);
+	// Check info packet version
+	if (device->info.sensor_sn != 0) {
+		// Print message
+		printf("[MESSAGE] iTFS::LiDAR info packet was received.\n");
+		printf("[MESSAGE] iTFS::LiDAR info   | D# %d  lock %d\n",
+			device->idx, device->info.lock);
 
-	printf("\tSN #%d mode %d, rows %d, period %d\n",
-		device->info.sensor_sn,
-		device->info.capture_mode,
-		device->info.capture_row,
-		device->info.capture_period);
+		printf("\tSN #%d mode %d, rows %d, period %d\n",
+			device->info.sensor_sn,
+			device->info.capture_mode,
+			device->info.capture_row,
+			device->info.capture_period);
 
-	printf("\tshutter [ %d, %d, %d, %d, %d ]\n",
-		device->info.capture_shutter[0],
-		device->info.capture_shutter[1],
-		device->info.capture_shutter[2],
-		device->info.capture_shutter[3],
-		device->info.capture_shutter[4]);
+		printf("\tshutter [ %d, %d, %d, %d, %d ]\n",
+			device->info.capture_shutter[0],
+			device->info.capture_shutter[1],
+			device->info.capture_shutter[2],
+			device->info.capture_shutter[3],
+			device->info.capture_shutter[4]);
 
-	printf("\tlimit [ %d, %d ]\n",
-		device->info.capture_limit[0],
-		device->info.capture_limit[1]);
+		printf("\tlimit [ %d, %d ]\n",
+			device->info.capture_limit[0],
+			device->info.capture_limit[1]);
 
-	printf("\tip   %d.%d.%d.%d\n",
-		device->info.data_sensor_ip[0],
-		device->info.data_sensor_ip[1],
-		device->info.data_sensor_ip[2],
-		device->info.data_sensor_ip[3]);
+		printf("\tip   %d.%d.%d.%d\n",
+			device->info.data_sensor_ip[0],
+			device->info.data_sensor_ip[1],
+			device->info.data_sensor_ip[2],
+			device->info.data_sensor_ip[3]);
 
-	printf("\tdest %d.%d.%d.%d:%d\n",
-		device->info.data_dest_ip[0],
-		device->info.data_dest_ip[1],
-		device->info.data_dest_ip[2],
-		device->info.data_dest_ip[3],
-		device->info.data_port);
+		printf("\tdest %d.%d.%d.%d:%d\n",
+			device->info.data_dest_ip[0],
+			device->info.data_dest_ip[1],
+			device->info.data_dest_ip[2],
+			device->info.data_dest_ip[3],
+			device->info.data_port);
 
-	printf("\tsync %d, syncBase %d autoReboot %d, autoRebootTick %d\n",
-		device->info.sync,
-		device->info.sync_delay,
-		device->info.arb,
-		device->info.arb_timeout);
+		printf("\tsync %d, syncBase %d autoReboot %d, autoRebootTick %d\n",
+			device->info.sync,
+			device->info.sync_delay,
+			device->info.arb,
+			device->info.arb_timeout);
 
-	printf("\tFW version: V%d.%d.%d - ",
-		device->info.sensor_fw_ver[2],
-		device->info.sensor_fw_ver[1],
-		device->info.sensor_fw_ver[0]);
-	printf((const char*)device->info.sensor_fw_time);
-	printf(" ");
-	printf((const char*)device->info.sensor_fw_date);
-	printf("\n");
+		printf("\tFW version: V%d.%d.%d - ",
+			device->info.sensor_fw_ver[2],
+			device->info.sensor_fw_ver[1],
+			device->info.sensor_fw_ver[0]);
+		printf((const char*)device->info.sensor_fw_time);
+		printf(" ");
+		printf((const char*)device->info.sensor_fw_date);
+		printf("\n");
+	}
+	else if (device->info_v2.sensor_sn != 0) {
+		printf("[MESSAGE] iTFS::LiDAR info_v2 packet was received.\n");
+		printf("[MESSAGE] iTFS::LiDAR info_v2| D# %d  lock %d\n",
+			device->idx, device->info_v2.lock);
+
+		printf("\tSN #%d mode %d, rows %d, period %d\n",
+			device->info_v2.sensor_sn,
+			device->info_v2.capture_mode,
+			device->info_v2.capture_row,
+			device->info_v2.capture_period_us);
+
+		printf("\tshutter [ %d, %d, %d, %d, %d ]\n",
+			device->info_v2.capture_shutter[0],
+			device->info_v2.capture_shutter[1],
+			device->info_v2.capture_shutter[2],
+			device->info_v2.capture_shutter[3],
+			device->info_v2.capture_shutter[4]);
+
+		printf("\tlimit [ %d, %d ]\n",
+			device->info_v2.capture_limit[0],
+			device->info_v2.capture_limit[1]);
+
+		printf("\tip   %d.%d.%d.%d\n",
+			device->info_v2.data_sensor_ip[0],
+			device->info_v2.data_sensor_ip[1],
+			device->info_v2.data_sensor_ip[2],
+			device->info_v2.data_sensor_ip[3]);
+
+		printf("\tdest %d.%d.%d.%d:%d\n",
+			device->info_v2.data_dest_ip[0],
+			device->info_v2.data_dest_ip[1],
+			device->info_v2.data_dest_ip[2],
+			device->info_v2.data_dest_ip[3],
+			device->info_v2.data_port);
+
+		printf("\tsync %d, syncBase %d autoReboot %d, autoRebootTick %d\n",
+			device->info_v2.sync,
+			device->info_v2.sync_trig_delay_us,
+			device->info_v2.arb,
+			device->info_v2.arb_timeout);
+
+		printf("\tFW version: V%d.%d.%d - ",
+			device->info_v2.sensor_fw_ver[2],
+			device->info_v2.sensor_fw_ver[1],
+			device->info_v2.sensor_fw_ver[0]);
+		printf((const char*)device->info_v2.sensor_fw_time);
+		printf(" ");
+		printf((const char*)device->info_v2.sensor_fw_date);
+		printf("\n");
+
+		printf("\tFW0: V%d.%d.%d,  FW1: V%d.%d.%d,  FW2: V%d.%d.%d\n",
+			device->info_v2.sensor_fw0_ver[2],
+			device->info_v2.sensor_fw0_ver[1],
+			device->info_v2.sensor_fw0_ver[0],
+			device->info_v2.sensor_fw1_ver[2],
+			device->info_v2.sensor_fw1_ver[1],
+			device->info_v2.sensor_fw1_ver[0],
+			device->info_v2.sensor_fw2_ver[2],
+			device->info_v2.sensor_fw2_ver[1],
+			device->info_v2.sensor_fw2_ver[0]);
+
+		if (device->info_v2.sensor_boot_mode == 0) {
+			printf("\tSENSOR IS IN SAFE-MODE\n");
+		}
+	}
+	else {
+		printf("[MESSAGE] iTFS::LiDAR info   | INVALID PACKET\n");
+	}
 }
 
 // Helloworld example starts here
@@ -196,7 +268,7 @@ int main(int argc, char* argv[]) {
 		info_packet_handler);
 
 	// Read the intrinsic calibration file for iTFS
-	std::string calibFile = "iTFS-110.dat";
+	std::string calibFile = "../src/iTFS-110.dat";
 	//std::string calibFile = "../src/iTFS-80.dat";
 	readIntrinsic(calibFile);
 
@@ -213,6 +285,7 @@ int main(int argc, char* argv[]) {
 	// Draw grid
 	drawGrid(viewer, 20, 20, -1);
 
+	viewer->addCoordinateSystem(1.0);
 	// Check the sensor driver is ready
 	while (ilidar->Ready() != true) { std::this_thread::sleep_for(std::chrono::milliseconds(100)); }
 	printf("[MESSAGE] iTFS::LiDAR is ready.\n");
@@ -258,3 +331,4 @@ int main(int argc, char* argv[]) {
 	delete ilidar;
 	printf("[MESSAGE] iTFS::LiDAR has been deleted.\n");
 }
+

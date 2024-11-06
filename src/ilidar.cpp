@@ -3,8 +3,8 @@
  * @brief ilidar basic class header
  * @see ilidar.hpp
  * @author JSon (json@hybo.co)
- * @data 2023-12-28
- * @version 1.11.10
+ * @data 2024-10-13
+ * @version 1.12.1
  */
 
 #include "ilidar.hpp"
@@ -35,7 +35,7 @@ namespace iTFS {
 			this->broadcast_ip[0] = 192;
 			this->broadcast_ip[1] = 168;
 			this->broadcast_ip[2] = 5;
-			this->broadcast_ip[3] = 2;
+			this->broadcast_ip[3] = 255;
 		}
 		else {
 			this->broadcast_ip[0] = brodcast_ip[0];
@@ -274,7 +274,8 @@ namespace iTFS {
 						packet::decode_status((uint8_t*)&buffer[6], &(this->device[recv_device].status));
 
 						// Check lidar info
-						if (this->device[recv_device].status.sensor_sn != this->device[recv_device].info.sensor_sn) {
+						if ((this->device[recv_device].status.sensor_sn != this->device[recv_device].info.sensor_sn) &&
+							(this->device[recv_device].status.sensor_sn != this->device[recv_device].info_v2.sensor_sn)) {
 							// Send read_info command
 							iTFS::packet::cmd_t read_info;
 							read_info.cmd_id = iTFS::packet::cmd_read_info;
@@ -295,7 +296,8 @@ namespace iTFS {
 						this->Copy_status(&(this->device[recv_device]));
 
 						// Check lidar info
-						if (this->device[recv_device].status.sensor_sn != this->device[recv_device].info.sensor_sn) {
+						if ((this->device[recv_device].status.sensor_sn != this->device[recv_device].info.sensor_sn) &&
+							(this->device[recv_device].status.sensor_sn != this->device[recv_device].info_v2.sensor_sn)) {
 							// Send read_info command
 							iTFS::packet::cmd_t read_info;
 							read_info.cmd_id = iTFS::packet::cmd_read_info;
@@ -308,6 +310,11 @@ namespace iTFS {
 						this->status_packet_handler_func(&this->device[recv_device]);
 						continue;
 					}
+					else if (valid && (message_id == packet::sync_ack_id) && (payload_len == packet::sync_ack_len)) {
+						// Decode message
+						packet::decode_sync_ack((uint8_t*)&buffer[6], &(this->device[recv_device].sync_ack));
+						continue;
+					}
 					else if (valid && (message_id == packet::info_id) && (payload_len == packet::info_len)) {
 						// Decode message
 						packet::decode_info((uint8_t*)&buffer[6], &(this->device[recv_device].info));
@@ -317,6 +324,22 @@ namespace iTFS {
 
 						// Call handler
 						this->info_packet_handler_func(&this->device[recv_device]);
+						continue;
+					}
+					else if (valid && (message_id == packet::info_v2_id) && (payload_len == packet::info_v2_len)) {
+						// Decode message
+						packet::decode_info_v2((uint8_t*)&buffer[6], &(this->device[recv_device].info_v2));
+
+						// Update capture row in image data receiver
+						this->device[recv_device].data.capture_row = this->device[recv_device].info_v2.capture_row;
+
+						// Call handler
+						this->info_packet_handler_func(&this->device[recv_device]);
+						continue;
+					}
+					else if (valid && (message_id == packet::ack_id) && (payload_len == packet::ack_len)) {
+						// Decode message
+						packet::decode_ack((uint8_t*)&buffer[6], &(this->device[recv_device].ack));
 						continue;
 					}
 				}
@@ -540,6 +563,47 @@ namespace iTFS {
 		return result;
 	}
 
+	int LiDAR::Send_flash_block(int device_idx, packet::flash_block_t* fb) {
+		// Get device address
+		if (device_idx >= this->device_cnt) {
+			// There is no matched device
+			return (0);
+		}
+
+		// Initialize address
+		struct sockaddr_in addr;
+		memset(&addr, 0, sizeof(addr));
+
+		uint32_t ip = (this->device[device_idx].ip[3] << 24) | \
+			(this->device[device_idx].ip[2] << 16) | \
+			(this->device[device_idx].ip[1] << 8) | \
+			(this->device[device_idx].ip[0] << 0);
+
+		addr.sin_family = AF_INET;
+		addr.sin_addr.s_addr = ip;
+		addr.sin_port = htons(lidar_config_port);
+
+		// Copy command packet to buffer
+		uint8_t buffer[2048];
+		buffer[0] = packet::stx0;
+		buffer[1] = packet::stx1;
+		buffer[2] = (packet::flash_block_id >> 0) & 0xFF;
+		buffer[3] = (packet::flash_block_id >> 8) & 0xFF;
+		buffer[4] = (packet::flash_block_len >> 0) & 0xFF;
+		buffer[5] = (packet::flash_block_len >> 8) & 0xFF;
+		buffer[packet::header_len + packet::flash_block_len] = packet::etx0;
+		buffer[packet::header_len + packet::flash_block_len + 1] = packet::etx1;
+		packet::encode_flash_block(fb, &buffer[packet::header_len]);
+
+		// Send the packet
+		this->send_mutex.lock();
+		int result = sendto(this->send_sockfd, (const char*)buffer, (packet::overheader_len + packet::flash_block_len), 0, (struct sockaddr*)&addr, sizeof(addr));
+		this->send_mutex.unlock();
+
+		// Return sendto result
+		return result;
+	}
+
 	int LiDAR::Send_cmd_to_all(packet::cmd_t* cmd) {
 		// Initialize address
 		struct sockaddr_in addr;
@@ -616,6 +680,47 @@ namespace iTFS {
 		return result;
 	}
 
+	int LiDAR::Send_config(int device_idx, packet::info_v2_t* config) {
+		// Get device address
+		if (device_idx >= this->device_cnt) {
+			// There is no matched device
+			return (0);
+		}
+
+		// Initialize address
+		struct sockaddr_in addr;
+		memset(&addr, 0, sizeof(addr));
+
+		uint32_t ip = (this->device[device_idx].ip[3] << 24) | \
+			(this->device[device_idx].ip[2] << 16) | \
+			(this->device[device_idx].ip[1] << 8) | \
+			(this->device[device_idx].ip[0] << 0);
+
+		addr.sin_family = AF_INET;
+		addr.sin_addr.s_addr = ip;
+		addr.sin_port = htons(lidar_config_port);
+
+		// Copy command packet to buffer
+		uint8_t buffer[256];
+		buffer[0] = packet::stx0;
+		buffer[1] = packet::stx1;
+		buffer[2] = (packet::info_v2_id >> 0) & 0xFF;
+		buffer[3] = (packet::info_v2_id >> 8) & 0xFF;
+		buffer[4] = (packet::info_v2_len >> 0) & 0xFF;
+		buffer[5] = (packet::info_v2_len >> 8) & 0xFF;
+		buffer[packet::header_len + packet::info_v2_len] = packet::etx0;
+		buffer[packet::header_len + packet::info_v2_len + 1] = packet::etx1;
+		packet::encode_info_v2(config, &buffer[packet::header_len]);
+
+		// Send the packet
+		this->send_mutex.lock();
+		int result = sendto(this->send_sockfd, (const char*)buffer, (packet::overheader_len + packet::info_v2_len), 0, (struct sockaddr*)&addr, sizeof(addr));
+		this->send_mutex.unlock();
+
+		// Return sendto result
+		return result;
+	}
+
 	void LiDAR::Set_broadcast_ip(uint8_t* ip) {
 		this->broadcast_ip[0] = ip[0];
 		this->broadcast_ip[1] = ip[1];
@@ -623,3 +728,4 @@ namespace iTFS {
 		this->broadcast_ip[3] = ip[3];
 	}
 }
+
