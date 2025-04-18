@@ -1,9 +1,9 @@
 /**
- * @file ilidar.cpp
+ * @file ilidar.hpp ilidar.cpp
  * @brief ilidar basic class header
  * @author JSon (json@hybo.co)
- * @data 2024-10-13
- * @version 1.12.1
+ * @date 2025-02-03
+ * @version 1.12.4b
  */
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -40,7 +40,7 @@
 #include <mutex>
 #include <string.h>
 
-#if defined(_WIN32) || defined( _WIN64)
+#if defined(_WIN32) || defined(_WIN64)
  // Windows headers
 #include <WinSock2.h>
 #pragma comment(lib,"ws2_32.lib")
@@ -59,11 +59,12 @@
 #define closesocket	close
 #endif
 
+#pragma warning(disable: 4996)
+
 #include "packet.hpp"
 
-
 namespace iTFX {
-	constexpr uint8_t	ilidar_lib_ver[3] = { 1, 12, 1 };
+	constexpr uint8_t	ilidar_lib_ver[3] = { 4, 12, 1 };
 
 	const char str_message[]	= "[MESSAGE] iTFX::LiDAR | ";
 	const char str_error[]		= "[ ERROR ] iTFX::LiDAR | ";
@@ -92,7 +93,7 @@ namespace iTFX {
 }
 
 namespace iTFS {
-	constexpr uint8_t	ilidar_lib_ver[3] = { 1, 12, 1 };
+	constexpr uint8_t	ilidar_lib_ver[3] = { 4, 12, 1 };
 
 	const char str_message[]	= "[MESSAGE] iTFS::LiDAR | ";
 	const char str_error[]		= "[ ERROR ] iTFS::LiDAR | ";
@@ -123,10 +124,13 @@ namespace iTFS {
 	typedef struct {
 		uint8_t		mode;
 		uint8_t		frame;
+		uint8_t		row_frame[max_row];
 
 		int			capture_row;
 
 		uint16_t	img[2 * max_row][max_col];
+
+		int			frame_status;
 	}img_t;
 
 	typedef struct {
@@ -155,6 +159,7 @@ namespace iTFS {
 			callback_handler	status_packet_handler_func,
 			callback_handler	info_packet_handler_func,
 			uint8_t				*brodcast_ip = NULL,
+			uint8_t				*listening_ip = NULL,
 			uint16_t			listening_port = user_data_port);
 
 		~LiDAR();
@@ -164,11 +169,15 @@ namespace iTFS {
 		void		Join()		{ this->read_thread.join(); this->send_thread.join(); }
 
 		int			Send_cmd(int device_idx, packet::cmd_t* cmd);
+        int         Send_cmd(uint8_t* device_ip, packet::cmd_t* cmd);
+        int			Send_cmd_to_all(packet::cmd_t* cmd);
+
 		int			Send_flash_block(int device_idx, packet::flash_block_t* fb);
-		int			Send_cmd_to_all(packet::cmd_t* cmd);
+
 		int			Send_config(int device_idx, packet::info_t* config);
 		int			Send_config(int device_idx, packet::info_v2_t* config);
-		void		Set_broadcast_ip(uint8_t *ip);
+
+		void		Set_broadcast_ip(uint8_t* ip);
 
 		int			device_cnt;
 		device_t	device[max_device];
@@ -186,6 +195,7 @@ namespace iTFS {
 		void		Read_run();
 		void		Send_run();
 
+		uint8_t		listening_ip[4];
 		uint16_t	listening_port;
 
 		std::mutex	send_mutex;

@@ -24,7 +24,7 @@ static void lidar_data_handler(iTFS::device_t *device) {
 		device->ip[0], device->ip[1], device->ip[2], device->ip[3], device->port);
 
 	// Deep-copy the lidar data to img_t
-	memcpy((void*)&lidar_img_data[device->idx],
+	memcpy((void*)&lidar_img_data[device->idx].img,
 		(const void*)device->data.img,
 		sizeof(device->data.img));
 
@@ -219,8 +219,8 @@ static void keyboard_input_run(iTFS::LiDAR* ilidar) {
 					ilidar->device[_i].info_v2.capture_shutter[3] = 8;
 					ilidar->device[_i].info_v2.capture_shutter[4] = 8000;
 
-					ilidar->device[_i].info_v2.capture_period_us = 200000;
-					ilidar->device[_i].info_v2.sync = iTFS::packet::sync_strobe_on | iTFS::packet::sync_mode_udp;
+					ilidar->device[_i].info_v2.capture_period_us = 100000;
+					ilidar->device[_i].info_v2.sync = iTFS::packet::sync_strobe_on | iTFS::packet::sync_mode_udp | iTFS::packet::sync_func_trim;
 
 					ilidar->device[_i].info_v2.capture_seq = 0;
 					ilidar->device[_i].info_v2.sync_trig_delay_us = 0;
@@ -246,6 +246,14 @@ static void keyboard_input_run(iTFS::LiDAR* ilidar) {
 					printf("[MESSAGE] iTFS::LiDAR config(info_v2) packet was sent to D#%d.\n", _i);
 				}
 			}
+		}
+		else if (ch == 'i' || ch == 'I') {
+			// Send lock command
+			iTFS::packet::cmd_t read_info = { 0, };
+			read_info.cmd_id = iTFS::packet::cmd_read_info;
+			read_info.cmd_msg = 0;
+			ilidar->Send_cmd_to_all(&read_info);
+			printf("[MESSAGE] iTFS::LiDAR cmd_read_info packet was sent.\n");
 		}
 		else if (ch == 'w' || ch == 'W') {
 			/* Send store command packet */
@@ -304,7 +312,22 @@ static void keyboard_input_run(iTFS::LiDAR* ilidar) {
 			sync.cmd_id = iTFS::packet::cmd_sync;
 			sync.cmd_msg = 0;
 			ilidar->Send_cmd_to_all(&sync);
-			printf("[MESSAGE] iTFS::LiDAR cmd_sync packet was sent.\n");
+		}
+		else if (ch == 'z' || ch == 'Z') {
+			/* Send trigger_master_start command packet */
+			uint8_t master_tx_period = 5;
+			uint8_t repeat_count = 20;
+			iTFS::packet::cmd_t trigger_start = { 0, };
+			trigger_start.cmd_id = iTFS::packet::cmd_trigger_master_start;
+			trigger_start.cmd_msg = (master_tx_period << 8) | (repeat_count);
+			ilidar->Send_cmd_to_all(&trigger_start);
+		}
+		else if (ch == 'x' || ch == 'X') {
+			/* Send trigger_master_stop command packet */
+			iTFS::packet::cmd_t trigger_stop = { 0, };
+			trigger_stop.cmd_id = iTFS::packet::cmd_trigger_master_stop;
+			trigger_stop.cmd_msg = 0;
+			ilidar->Send_cmd_to_all(&trigger_stop);
 		}
 		else if (ch == 'r' || ch == 'R') {
 			/* Send reboot command packet */

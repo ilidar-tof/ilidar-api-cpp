@@ -21,6 +21,9 @@ FILE(GLOB API_SRC
 add_executable(helloworld_cmake helloworld/helloworld.cpp ${API_SRC})
 add_executable(opencv_example_cmake opencv/opencv_example.cpp ${API_SRC})
 add_executable(pcl_example_cmake pcl/pcl_example.cpp ${API_SRC})
+add_executable(streamer_cmake streamer/streamer.cpp ${API_SRC})
+add_library(ilidar SHARED dll/dllexport.cpp ${API_SRC})
+
 
 # Use OpenCV 4.0+
 if (WIN32)

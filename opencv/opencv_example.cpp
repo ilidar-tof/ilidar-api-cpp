@@ -9,6 +9,10 @@
 // Include ilidar library
 #include "../src/ilidar.hpp"
 
+// Flags
+static bool ilidar_sync = true;				// This allows the program to send sync packet in every 10 s.
+static bool ilidar_edge_rejection = false;	// This allows the program to perform post-processing for edge rejection.
+
 // cv::Mat definition for global data holder
 static cv::Mat lidar_img_data[iTFS::max_device];
 
@@ -39,9 +43,9 @@ static void lidar_data_handler(iTFS::device_t* device) {
 // Basic lidar status packet handler function
 static void status_packet_handler(iTFS::device_t* device) {
 	// Print message
-	printf("[MESSAGE] iTFS::LiDAR status | D#%d mode %d frame %2d time %lld us temp %.2f from %3d.%3d.%3d.%3d:%5d\n",
-		device->idx, device->status.capture_mode, device->status.capture_frame, get_sensor_time_in_us(&device->status), (float)(device->status.sensor_temp_core) * 0.01f,
-		device->ip[0], device->ip[1], device->ip[2], device->ip[3], device->port);
+	//printf("[MESSAGE] iTFS::LiDAR status | D#%d mode %d frame %2d time %lld us temp %.2f from %3d.%3d.%3d.%3d:%5d\n",
+	//	device->idx, device->status.capture_mode, device->status.capture_frame, get_sensor_time_in_us(&device->status), (float)(device->status.sensor_temp_core) * 0.01f,
+	//	device->ip[0], device->ip[1], device->ip[2], device->ip[3], device->port);
 }
 
 // Basic lidar info packet handler function
@@ -196,7 +200,7 @@ int main(int argc, char* argv[]) {
 	printf("[MESSAGE] iTFS::LiDAR cmd_sync packet was sent.\n");
 
 	// Sync packet period
-	int sync_packet_period = 20;	// [s] 20 sec
+	int sync_packet_period = 10;	// [s] 10 sec
 
 	// Get program start time
 	auto pri_time = std::chrono::system_clock::now();
@@ -220,16 +224,36 @@ int main(int argc, char* argv[]) {
 		}
 
 		// Check the time for sync packet
-		auto cur_time = std::chrono::system_clock::now();
-		auto after_last_sync = std::chrono::duration_cast<std::chrono::seconds>(cur_time - pri_time);
-		if (after_last_sync.count() > sync_packet_period) {
-			/* Time to send sync packet */
-			pri_time = cur_time;
+		if (ilidar_sync) {
+			auto cur_time = std::chrono::system_clock::now();
+			auto after_last_sync = std::chrono::duration_cast<std::chrono::seconds>(cur_time - pri_time);
+			if (after_last_sync.count() > sync_packet_period) {
+				/* Time to send sync packet */
+				pri_time = cur_time;
 
-			// Send sync command packet
-			ilidar->Send_cmd_to_all(&sync);
-			printf("[MESSAGE] iTFS::LiDAR cmd_sync packet was sent.\n");
+				// Send sync command packet
+				ilidar->Send_cmd_to_all(&sync);
+				printf("[MESSAGE] iTFS::LiDAR cmd_sync packet was sent.\n");
+			}
 		}
+
+		// Simple edge-rejection processing example
+		if (ilidar_edge_rejection) {
+			int edge_rejection_threshold = 100;		// [mm] edge rejection 
+
+			cv::Mat depth_image = lidar_img_data[recv_device_idx](cv::Rect(0, 0, iTFS::max_col, iTFS::max_row));
+			cv::Mat intensity_image = lidar_img_data[recv_device_idx](cv::Rect(0, iTFS::max_row, iTFS::max_col, iTFS::max_row));
+
+			cv::Mat	mask, dx, dy;
+			cv::Sobel(depth_image, dx, -1, 1, 0);
+			cv::Sobel(depth_image, dy, -1, 0, 1);
+			mask = cv::abs(dx) + cv::abs(dy);
+			cv::threshold(mask, mask, 16 * edge_rejection_threshold, 1, cv::THRESH_BINARY_INV);	// Sobel filtering with normalization by 16
+			depth_image = depth_image.mul(mask);
+		}
+
+		// Scale the image to visualize up to 20000mm (20m)
+		lidar_img_data[recv_device_idx].convertTo(scaled_img, CV_8UC1, 255.0 / 3000.0);	// Reduced scale (20m)
 
 		// Set the openCV window name
 		std::string window_name = "iTFS D" + \
@@ -239,9 +263,6 @@ int main(int argc, char* argv[]) {
 			std::to_string(ilidar->device[recv_device_idx].ip[2]) + "." + \
 			std::to_string(ilidar->device[recv_device_idx].ip[3]) + ":" + \
 			std::to_string(ilidar->device[recv_device_idx].port);
-
-		// Scale the image to visualize up to 20000mm (20m)
-		lidar_img_data[recv_device_idx].convertTo(scaled_img, CV_8UC1, 255.0 / 20000.0);	// Reduced scale (20m)
 
 		// Apply colormap
 		cv::applyColorMap(scaled_img, color_img, cv::COLORMAP_JET);

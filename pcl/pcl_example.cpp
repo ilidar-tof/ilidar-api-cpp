@@ -115,7 +115,7 @@ static void lidar_data_handler(iTFS::device_t* device) {
 	//	device->ip[0], device->ip[1], device->ip[2], device->ip[3], device->port);
 
 	// Deep-copy the lidar data to img_t
-	memcpy((void*)&lidar_img_data[device->idx],
+	memcpy((void*)&lidar_img_data[device->idx].img,
 		(const void*)device->data.img,
 		sizeof(device->data.img));
 

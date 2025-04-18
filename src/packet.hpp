@@ -2,8 +2,8 @@
  * @file packet.hpp
  * @brief header only lilbrary for ilidar packet
  * @author JSon (json@hybo.co)
- * @data 2024-10-13
- * @version 1.12.1
+ * @date 2025-02-03
+ * @version 1.12.4b
  */
 
 //////////////////////////////////////////////////////////////////////////////////////
@@ -35,12 +35,12 @@
 #include <stdio.h>
 
 namespace iTFX {
-	constexpr uint8_t	ilidar_pack_ver[3] = { 1, 12, 1 };
+	constexpr uint8_t	ilidar_pack_ver[3] = { 4, 12, 1 };
 }
 
 namespace iTFS {
 	namespace packet {
-		constexpr uint8_t	ilidar_pack_ver[3] = { 1, 12, 1 };
+		constexpr uint8_t	ilidar_pack_ver[3] = { 4, 12, 1 };
 
 		/*
 		iTFS PACKET STRUCTURE DESCRIPTIONS
@@ -91,6 +91,8 @@ namespace iTFS {
 
 		constexpr uint16_t	cmd_sync			= 0x0000;	// FW V1.4.0+, BROADCAST only
 		constexpr uint16_t	cmd_select			= 0x0001;	// FW V1.4.0+, BROADCAST only
+		constexpr uint16_t	cmd_trigger_master_start	= 0x0002;	// FW V1.5.6+
+		constexpr uint16_t	cmd_trigger_master_stop		= 0x0003;	// FW V1.5.6+
 
 		constexpr uint16_t	cmd_measure			= 0x0100;	// FW V1.4.0+
 		constexpr uint16_t	cmd_pause			= 0x0101;	// FW V1.4.0+
@@ -114,7 +116,10 @@ namespace iTFS {
 		constexpr uint16_t	cmd_unlock			= 0x0501;	// FW V1.4.0+, UNICAST only, cmd_msg = sensor_sn
 
 		constexpr uint16_t	cmd_flash_start		= 0x0600;	// FW V1.5.0+, UNICAST only, cmd_msg = sensor_sn 
-		constexpr uint16_t	cmd_flash_finish	= 0x06FF;	// FW V1.5.0+, UNICAST only, cmd_msg = sensor_sn 
+		constexpr uint16_t	cmd_flash_finish	= 0x06FF;	// FW V1.5.0+, UNICAST only, cmd_msg = sensor_sn
+
+		constexpr uint16_t	cmd_take			= 0x0700;	// FW V1.5.7+
+		constexpr uint16_t	cmd_give			= 0x07AA;	// FW V1.5.7+
 
 		constexpr uint16_t	ack_id				= 0x0040;	// FW V1.5.0+
 		constexpr uint16_t	ack_len				= 34;		// FW V1.5.0+
@@ -124,6 +129,9 @@ namespace iTFS {
 
 		constexpr uint16_t	flash_block_id		= 0x0100;	// FW V1.5.0+
 		constexpr uint16_t	flash_block_len		= 1062;		// FW V1.5.0+
+
+		constexpr uint16_t	stream_status_id	= 0x1000;	// SW V1.12.2+
+		constexpr uint16_t	stream_status_len	= 130;		// SW V1.12.2+
 
 		// FW V1.4.0+
 		// Image data packet for depth and intensity images (definition only)
@@ -298,6 +306,17 @@ namespace iTFS {
 			uint16_t	bin_crc16;					// CRC-16-CCITT for bin
 		}flash_block_t;
 
+		// SW V1.12.2+
+		// Output packet for sensor streamer
+		typedef struct {
+			uint8_t		sensor_cnt;					// Number of the sensors
+			uint8_t		shm_idx;					// Shared memory index
+			uint16_t	sensor_sn[32];				// Sensor serial number table
+			uint8_t		sensor_frame[32];			// Sensor frame number table
+			uint8_t		read_status[32];			// Sensor read status table
+		}stream_status_t;
+
+
 		// FW V1.5.0+
 		// Sensor boot mode flag
 		constexpr int		sensor_boot_mode_pos		= 0;
@@ -363,6 +382,15 @@ namespace iTFS {
 		constexpr uint8_t	sync_strobe_off				= (0 << sync_strobe_pos);
 		constexpr uint8_t	sync_strobe_on				= (1 << sync_strobe_pos);
 		//constexpr uint8_t	sync_strobe_uart			= (3 << sync_strobe_pos);
+		
+		// FW V1.5.6+
+		// Sensor sync function(trim or trigger) flag
+		constexpr int		sync_func_pos				= 4;
+		constexpr uint8_t	sync_func_mask				= (0x03 << sync_func_pos);
+		constexpr uint8_t	sync_func_trim				= (0 << sync_func_pos);
+		constexpr uint8_t	sync_func_trigger			= (1 << sync_func_pos);
+		constexpr uint8_t	sync_func_trigger_nesting	= (2 << sync_func_pos);
+		constexpr uint8_t	sync_func_trigger_master	= (3 << sync_func_pos);
 
 
 		// FW V1.4.0+
@@ -899,6 +927,29 @@ namespace iTFS {
 			dst->ver[2] = src[35];
 			for (int _i = 0; _i < 1024; _i++) { dst->bin[_i] = src[36 + _i]; }
 			dst->bin_crc16 = (src[1061] << 8) | src[1060];
+		}
+
+		static void encode_stream_status(stream_status_t* src, uint8_t* dst) {
+			dst[0] = src->sensor_cnt;
+			dst[1] = src->shm_idx;
+
+			for (int _i = 0; _i < 32; _i++) {
+				dst[2 + 4 * _i] = (src->sensor_sn[_i] >> 0) & 0xFF;
+				dst[3 + 4 * _i] = (src->sensor_sn[_i] >> 8) & 0xFF;
+				dst[4 + 4 * _i] = src->sensor_frame[_i];
+				dst[5 + 4 * _i] = src->read_status[_i];
+			}
+		}
+
+		static void decode_stream_status(uint8_t* src, stream_status_t* dst) {
+			dst->sensor_cnt		= src[0];
+			dst->shm_idx		= src[1];
+
+			for (int _i = 0; _i < 32; _i++) {
+				dst->sensor_sn[_i]		= (src[3 + 4 * _i] << 8) | src[2 + 4 * _i];
+				dst->sensor_frame[_i]	= src[4 + 4 * _i];
+				dst->read_status[_i]	= src[5 + 4 * _i];
+			}
 		}
 
 		/*

@@ -1,10 +1,8 @@
 /**
- * @file ilidar.cpp
- * @brief ilidar basic class header
  * @see ilidar.hpp
  * @author JSon (json@hybo.co)
- * @data 2024-10-13
- * @version 1.12.1
+ * @date 2025-02-03
+ * @version 1.12.3
  */
 
 #include "ilidar.hpp"
@@ -15,6 +13,7 @@ namespace iTFS {
 			callback_handler	status_packet_handler_func,
 			callback_handler	info_packet_handler_func,
 			uint8_t				*brodcast_ip,
+			uint8_t				*listening_ip,
 			uint16_t			listening_port) {
 
 		this->img_data_handler_func = img_data_handler_func;
@@ -42,13 +41,31 @@ namespace iTFS {
 			this->broadcast_ip[1] = brodcast_ip[1];
 			this->broadcast_ip[2] = brodcast_ip[2];
 			this->broadcast_ip[3] = brodcast_ip[3];
+			printf("[MESSAGE] iTFS::LiDAR unique broadcast IP has been set: %d.%d.%d.%d\n",
+				this->broadcast_ip[0], this->broadcast_ip[1], this->broadcast_ip[2], this->broadcast_ip[3]);
 		}
+
+		if (listening_ip == NULL) {
+			this->listening_ip[0] = 0;
+			this->listening_ip[1] = 0;
+			this->listening_ip[2] = 0;
+			this->listening_ip[3] = 0;
+		}
+		else {
+			this->listening_ip[0] = listening_ip[0];
+			this->listening_ip[1] = listening_ip[1];
+			this->listening_ip[2] = listening_ip[2];
+			this->listening_ip[3] = listening_ip[3];
+			printf("[MESSAGE] iTFS::LiDAR unique listening IP has been set: %d.%d.%d.%d\n",
+				this->listening_ip[0], this->listening_ip[1], this->listening_ip[2], this->listening_ip[3]);
+		}
+
 		this->listening_port = listening_port;
 
 		if (this->img_data_handler_func == NULL || \
 			this->status_packet_handler_func == NULL || \
 			this->info_packet_handler_func == NULL) {
-			printf("[ERROR] iTFS::LiDAR callback functions must be defined.\n");
+			printf("[ ERROR ] iTFS::LiDAR callback functions must be defined.\n");
 			this->is_ready = false;
 			return;
 		}
@@ -56,12 +73,20 @@ namespace iTFS {
 		this->read_thread = std::thread([=] { this->Read_run(); });
 		this->send_thread = std::thread([=] { this->Send_run(); });
 
+        auto pri_time = std::chrono::system_clock::now();
 		while (true) {
 			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 			if (this->is_read_ready == true && \
 				this->is_send_ready == true) {
 				break;
 			}
+
+            auto cur_time = std::chrono::system_clock::now();
+            auto try_time = std::chrono::duration_cast<std::chrono::milliseconds>(cur_time - pri_time);
+            if (try_time.count() > 500) {
+                this->is_ready = false;
+                return;
+            }
 		}
 
 		this->is_ready = true;
@@ -103,7 +128,18 @@ namespace iTFS {
 		// Initialize incomming address
 		memset((void*)&addr, 0x00, sizeof(addr));
 		addr.sin_family = AF_INET;
-		addr.sin_addr.s_addr = htonl(INADDR_ANY);
+		if (this->listening_ip[0] == 0 && \
+			this->listening_ip[1] == 0 && \
+			this->listening_ip[2] == 0 && \
+			this->listening_ip[3] == 0) {
+			addr.sin_addr.s_addr = htonl(INADDR_ANY);
+		}
+		else {
+			char addr_str[32];
+			sprintf(addr_str, "%d.%d.%d.%d",
+				this->listening_ip[0], this->listening_ip[1], this->listening_ip[2], this->listening_ip[3]);
+			addr.sin_addr.s_addr = inet_addr(addr_str);
+		}
 		addr.sin_port = htons(this->listening_port);
 
 		// Set the socket option to reuse address
@@ -190,13 +226,48 @@ namespace iTFS {
 								}
 							}
 
+							// Update row_frame
+							this->device[recv_device].data.row_frame[row_idx] = frame;
+
 							// Check the last index was received
 							if ((row_idx == (this->device[recv_device].data.capture_row / 2 - 1)) && \
 								((this->device[recv_device].info.data_output & packet::data_output_intensity_mask) == 0)) {
+
+								// Get sum of row_frames
+								int sum_row_frames = 0;
+								for (int _i = 0; _i < this->device[recv_device].data.capture_row / 2; _i++) {
+									sum_row_frames += this->device[recv_device].data.row_frame[_i];
+								}
+
+								// Check sum of row_frames
+								if (sum_row_frames != (frame * this->device[recv_device].data.capture_row / 2)) {
+									// There are missing rows
+									this->device[recv_device].data.frame_status = (-1);
+								}
+								else {
+									this->device[recv_device].data.frame_status = 0;
+								}
+
 								// Call callback function
 								this->img_data_handler_func(&this->device[recv_device]);
 							}
 							else if ((row_idx == (this->device[recv_device].data.capture_row - 1))) {
+
+								// Get sum of row_frames
+								int sum_row_frames = 0;
+								for (int _i = 0; _i < this->device[recv_device].data.capture_row; _i++) {
+									sum_row_frames += this->device[recv_device].data.row_frame[_i];
+								}
+
+								// Check sum of row_frames
+								if (sum_row_frames != (frame * this->device[recv_device].data.capture_row)) {
+									// There are missing rows
+									this->device[recv_device].data.frame_status = (-1);
+								}
+								else {
+									this->device[recv_device].data.frame_status = 0;
+								}
+
 								// Call callback function
 								this->img_data_handler_func(&this->device[recv_device]);
 							}
@@ -213,13 +284,49 @@ namespace iTFS {
 								}
 							}
 
+							// Update row_frame
+							this->device[recv_device].data.row_frame[2 * row_idx + 0] = frame;
+							this->device[recv_device].data.row_frame[2 * row_idx + 1] = frame;
+
 							// Check the last index was received
 							if ((row_idx == (this->device[recv_device].data.capture_row / 4 - 1)) && \
 								((this->device[recv_device].info.data_output & packet::data_output_intensity_mask) == 0)) {
+
+								// Get sum of row_frames
+								int sum_row_frames = 0;
+								for (int _i = 0; _i < this->device[recv_device].data.capture_row / 4; _i++) {
+									sum_row_frames += this->device[recv_device].data.row_frame[_i];
+								}
+
+								// Check sum of row_frames
+								if (sum_row_frames != (frame * this->device[recv_device].data.capture_row / 4)) {
+									// There are missing rows
+									this->device[recv_device].data.frame_status = (-1);
+								}
+								else {
+									this->device[recv_device].data.frame_status = 0;
+								}
+
 								// Call callback function
 								this->img_data_handler_func(&this->device[recv_device]);
 							}
 							else if ((row_idx == (this->device[recv_device].data.capture_row / 2 - 1))) {
+
+								// Get sum of row_frames
+								int sum_row_frames = 0;
+								for (int _i = 0; _i < this->device[recv_device].data.capture_row / 2; _i++) {
+									sum_row_frames += this->device[recv_device].data.row_frame[_i];
+								}
+
+								// Check sum of row_frames
+								if (sum_row_frames != (frame * this->device[recv_device].data.capture_row / 2)) {
+									// There are missing rows
+									this->device[recv_device].data.frame_status = (-1);
+								}
+								else {
+									this->device[recv_device].data.frame_status = 0;
+								}
+
 								// Call callback function
 								this->img_data_handler_func(&this->device[recv_device]);
 							}
@@ -239,13 +346,51 @@ namespace iTFS {
 								}
 							}
 
+							// Update row_frame
+							this->device[recv_device].data.row_frame[4 * row_idx + 0] = frame;
+							this->device[recv_device].data.row_frame[4 * row_idx + 1] = frame;
+							this->device[recv_device].data.row_frame[4 * row_idx + 2] = frame;
+							this->device[recv_device].data.row_frame[4 * row_idx + 3] = frame;
+
 							// Check the last index was received
 							if ((row_idx == (this->device[recv_device].data.capture_row / 8 - 1)) && \
 								((this->device[recv_device].info.data_output & packet::data_output_intensity_mask) == 0)) {
+
+								// Get sum of row_frames
+								int sum_row_frames = 0;
+								for (int _i = 0; _i < this->device[recv_device].data.capture_row / 8; _i++) {
+									sum_row_frames += this->device[recv_device].data.row_frame[_i];
+								}
+
+								// Check sum of row_frames
+								if (sum_row_frames != (frame * this->device[recv_device].data.capture_row / 8)) {
+									// There are missing rows
+									this->device[recv_device].data.frame_status = (-1);
+								}
+								else {
+									this->device[recv_device].data.frame_status = 0;
+								}
+
 								// Call callback function
 								this->img_data_handler_func(&this->device[recv_device]);
 							}
 							else if ((row_idx == (this->device[recv_device].data.capture_row / 4 - 1))) {
+
+								// Get sum of row_frames
+								int sum_row_frames = 0;
+								for (int _i = 0; _i < this->device[recv_device].data.capture_row / 4; _i++) {
+									sum_row_frames += this->device[recv_device].data.row_frame[_i];
+								}
+
+								// Check sum of row_frames
+								if (sum_row_frames != (frame * this->device[recv_device].data.capture_row / 4)) {
+									// There are missing rows
+									this->device[recv_device].data.frame_status = (-1);
+								}
+								else {
+									this->device[recv_device].data.frame_status = 0;
+								}
+
 								// Call callback function
 								this->img_data_handler_func(&this->device[recv_device]);
 							}
@@ -260,9 +405,27 @@ namespace iTFS {
 									}
 								}
 							}
+							
+							this->device[recv_device].data.row_frame[row_idx] = frame;
 
 							// Check the last index was received
 							if (row_idx == gray_row / 2 - 1) {
+
+								// Get sum of row_frames
+								int sum_row_frames = 0;
+								for (int _i = 0; _i < gray_row / 2; _i++) {
+									sum_row_frames += this->device[recv_device].data.row_frame[_i];
+								}
+
+								// Check sum of row_frames
+								if (sum_row_frames != (frame * gray_row / 2)) {
+									// There are missing rows
+									this->device[recv_device].data.frame_status = (-1);
+								}
+								else {
+									this->device[recv_device].data.frame_status = 0;
+								}
+
 								// Call callback function
 								this->img_data_handler_func(&this->device[recv_device]);
 							}
@@ -329,9 +492,10 @@ namespace iTFS {
 					else if (valid && (message_id == packet::info_v2_id) && (payload_len == packet::info_v2_len)) {
 						// Decode message
 						packet::decode_info_v2((uint8_t*)&buffer[6], &(this->device[recv_device].info_v2));
-
+						
 						// Update capture row in image data receiver
 						this->device[recv_device].data.capture_row = this->device[recv_device].info_v2.capture_row;
+						this->device[recv_device].info.data_output = this->device[recv_device].info_v2.data_output;
 
 						// Call handler
 						this->info_packet_handler_func(&this->device[recv_device]);
@@ -562,6 +726,41 @@ namespace iTFS {
 		// Return sendto result
 		return result;
 	}
+
+    int LiDAR::Send_cmd(uint8_t* device_ip, packet::cmd_t* cmd) {
+        // Initialize address
+        struct sockaddr_in addr;
+        memset(&addr, 0, sizeof(addr));
+
+        uint32_t ip = (device_ip[3] << 24) | \
+            (device_ip[2] << 16) | \
+            (device_ip[1] << 8) | \
+            (device_ip[0] << 0);
+
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = ip;
+        addr.sin_port = htons(lidar_config_port);
+
+        // Copy command packet to buffer
+        uint8_t buffer[16];
+        buffer[0] = packet::stx0;
+        buffer[1] = packet::stx1;
+        buffer[2] = (packet::cmd_id >> 0) & 0xFF;
+        buffer[3] = (packet::cmd_id >> 8) & 0xFF;
+        buffer[4] = (packet::cmd_len >> 0) & 0xFF;
+        buffer[5] = (packet::cmd_len >> 8) & 0xFF;
+        buffer[packet::header_len + packet::cmd_len] = packet::etx0;
+        buffer[packet::header_len + packet::cmd_len + 1] = packet::etx1;
+        packet::encode_cmd(cmd, &buffer[packet::header_len]);
+
+        // Send the packet
+        this->send_mutex.lock();
+        int result = sendto(this->send_sockfd, (const char*)buffer, (packet::overheader_len + packet::cmd_len), 0, (struct sockaddr*)&addr, sizeof(addr));
+        this->send_mutex.unlock();
+
+        // Return sendto result
+        return result;
+    }
 
 	int LiDAR::Send_flash_block(int device_idx, packet::flash_block_t* fb) {
 		// Get device address
